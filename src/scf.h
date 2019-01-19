@@ -28,7 +28,6 @@ class DFTGrid;
 #include "eriscreen.h"
 #include "erichol.h"
 #include "density_fitting.h"
-class Settings;
 
 class Checkpoint;
 
@@ -327,7 +326,7 @@ class SCF {
 
  public:
   /// Constructor
-  SCF(const BasisSet & basis, const Settings & set, Checkpoint & chkpt);
+  SCF(const BasisSet & basis, Checkpoint & chkpt);
   ~SCF();
 
   /// Calculate restricted Hartree-Fock solution
@@ -472,9 +471,9 @@ arma::mat purify_density_NO(const arma::mat & P, arma::mat & C, const arma::mat 
 /// Get atomic occupancy (fractional occupation of full valence shell)
 std::vector<double> atomic_occupancy(double Nalpha, int Nbf);
 /// Generate orbital occupancies
-std::vector<double> get_restricted_occupancy(const Settings & set, const BasisSet & basis);
+std::vector<double> get_restricted_occupancy(const BasisSet & basis);
 /// Generate orbital occupancies
-void get_unrestricted_occupancy(const Settings & set, const BasisSet & basis, std::vector<double> & occa, std::vector<double> & occb);
+void get_unrestricted_occupancy(const BasisSet & basis, std::vector<double> & occa, std::vector<double> & occb);
 
 /// Compute magnitude of dipole moment
 double dip_mom(const arma::mat & P, const BasisSet & basis);
@@ -487,10 +486,10 @@ double electron_spread(const arma::mat & P, const BasisSet & basis);
 void get_Nel_alpha_beta(int Nel, int mult, int & Nel_alpha, int & Nel_beta);
 
 /// Parse DFT grid settings
-dft_t parse_dft(const Settings & set, bool init);
+dft_t parse_dft(bool init);
 
 /// Run the calculation
-void calculate(const BasisSet & basis, const Settings & set, bool doforce=false);
+void calculate(const BasisSet & basis, bool doforce=false);
 
 /// Helper for sorting orbitals into maximum overlap
 typedef struct {

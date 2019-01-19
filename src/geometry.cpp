@@ -49,14 +49,15 @@
 #include "version.h"
 #endif
 
+// Settings
+Settings settings;
+
 // Optimization helpers
 typedef struct {
   // Atoms in the system
   std::vector<atom_t> atoms;
   // Basis set library
   BasisSetLibrary baslib;
-  // Settings used
-  Settings set;
   // Indices of dofs
   std::vector<size_t> dofidx;
 
@@ -165,10 +166,10 @@ enum calcd {
 };
 
 
-void run_calc(const BasisSet & basis, Settings set, bool force) {
+void run_calc(const BasisSet & basis, bool force) {
   bool pz=false;
   try {
-    pz=set.get_bool("PZ");
+    pz=settings.get_bool("PZ");
   } catch(std::runtime_error &) {
   }
 
@@ -178,9 +179,9 @@ void run_calc(const BasisSet & basis, Settings set, bool force) {
   Timer t;
 
   // Nothing to load - run full calculation.
-  calculate(basis,set,force);
+  calculate(basis,force);
   if(force) {
-    Checkpoint solchk(set.get_string("SaveChk"),false);
+    Checkpoint solchk(settings.get_string("SaveChk"),false);
     arma::vec f;
     solchk.read("Force",f);
     interpret_force(f).t().print("Analytic force");
@@ -191,13 +192,13 @@ void run_calc(const BasisSet & basis, Settings set, bool force) {
   }
 }
 
-void run_calc_num(const BasisSet & basis, Settings set, bool force, int npoints, double h) {
-  std::string savename=set.get_string("SaveChk");
+void run_calc_num(const BasisSet & basis, bool force, int npoints, double h) {
+  std::string savename=settings.get_string("SaveChk");
   std::string tempname=".tempchk";
 
   // Run calculation
   Timer t;
-  calculate(basis,set,false);
+  calculate(basis,false);
   if(force)
     printf("Energy evaluated in %s\n",t.elapsed().c_str());
 
@@ -205,7 +206,7 @@ void run_calc_num(const BasisSet & basis, Settings set, bool force, int npoints,
   if(!force)
     return;
   // Turn off verbose setting
-  set.set_bool("Verbose",false);
+  settings.set_bool("Verbose",false);
 
   // We have converged the energy, next compute force by finite
   // differences.
@@ -277,18 +278,20 @@ void run_calc_num(const BasisSet & basis, Settings set, bool force, int npoints,
       // Energy
       energy_t en;
 
-      Settings tempset(set);
-      tempset.set_string("LoadChk",savename);
-      tempset.set_string("SaveChk",tempname);
+      Settings settings0(settings);
+      settings.set_string("LoadChk",savename);
+      settings.set_string("SaveChk",tempname);
       {
 	// Run calculation
-	calculate(dbas,tempset,false);
-	Checkpoint solchk(tempset.get_string("SaveChk"),false);
+	calculate(dbas,false);
+	Checkpoint solchk(settings.get_string("SaveChk"),false);
 	// Current energy is
 	solchk.read(en);
 	E(isten)=en.E;
       }
       remove(tempname.c_str());
+      // Restore original settings
+      settings=settings0;
     }
 
     // Calculate force: - grad E
@@ -324,16 +327,16 @@ void calculate(const arma::vec & x, const opthelper_t & p, double & E, arma::vec
 
   // Construct basis set
   BasisSet basis;
-  construct_basis(basis,atoms,p.baslib,p.set);
+  construct_basis(basis,atoms,p.baslib);
 
   // Perform the electronic structure calculation
   if(p.numgrad)
-    run_calc_num(basis,p.set,force,p.npoints,p.step);
+    run_calc_num(basis,force,p.npoints,p.step);
   else
-    run_calc(basis,p.set,force);
+    run_calc(basis,force);
 
   // Solution checkpoint
-  Checkpoint solchk(p.set.get_string("SaveChk"),false);
+  Checkpoint solchk(settings.get_string("SaveChk"),false);
 
   // Energy
   energy_t en;
@@ -407,40 +410,39 @@ int main_guarded(int argc, char **argv) {
   tprog.print_time();
 
   // Parse settings
-  Settings set;
-  set.add_scf_settings();
-  set.add_string("SaveChk","File to use as checkpoint","erkale.chk");
-  set.add_string("LoadChk","File to load old results from","");
-  set.add_bool("ForcePol","Force polarized calculation",false);
-  set.add_string("Optimizer","Optimizer to use: CGFR, CGPR, BFGS, SD","BFGS");
-  set.add_int("CGReset","Reset CG direction to SD every N steps", 5);
-  set.add_int("MaxSteps","Maximum amount of geometry steps",256);
-  set.add_string("Criterion","Convergence criterion to use: LOOSE, NORMAL, TIGHT, VERYTIGHT","NORMAL");
-  set.add_string("OptMovie","xyz movie to store progress in","optimize.xyz");
-  set.add_string("Result","File to save optimized geometry in","optimized.xyz");
-  set.set_string("Logfile","erkale_geom.log");
-  set.add_bool("NumGrad","Use finite-difference gradient?",false);
-  set.add_int("Stencil","Order of finite-difference stencil for numgrad",2);
-  set.add_double("Stepsize","Finite-difference stencil step size",1e-6);
-  set.add_double("LineStepFac","Line search step length factor",sqrt(10.0));
-  set.parse(std::string(argv[1]),true);
-  set.print();
+  settings.add_scf_settings();
+  settings.add_string("SaveChk","File to use as checkpoint","erkale.chk");
+  settings.add_string("LoadChk","File to load old results from","");
+  settings.add_bool("ForcePol","Force polarized calculation",false);
+  settings.add_string("Optimizer","Optimizer to use: CGFR, CGPR, BFGS, SD","BFGS");
+  settings.add_int("CGReset","Reset CG direction to SD every N steps", 5);
+  settings.add_int("MaxSteps","Maximum amount of geometry steps",256);
+  settings.add_string("Criterion","Convergence criterion to use: LOOSE, NORMAL, TIGHT, VERYTIGHT","NORMAL");
+  settings.add_string("OptMovie","xyz movie to store progress in","optimize.xyz");
+  settings.add_string("Result","File to save optimized geometry in","optimized.xyz");
+  settings.set_string("Logfile","erkale_geom.log");
+  settings.add_bool("NumGrad","Use finite-difference gradient?",false);
+  settings.add_int("Stencil","Order of finite-difference stencil for numgrad",2);
+  settings.add_double("Stepsize","Finite-difference stencil step size",1e-6);
+  settings.add_double("LineStepFac","Line search step length factor",sqrt(10.0));
+  settings.parse(std::string(argv[1]),true);
+  settings.print();
 
   // Don't try saving or loading Cholesky integrals
-  set.set_int("CholeskyMode",0);
+  settings.set_int("CholeskyMode",0);
 
-  int maxiter=set.get_int("MaxSteps");
-  std::string optmovie=set.get_string("OptMovie");
-  std::string result=set.get_string("Result");
-  bool numgrad=set.get_bool("NumGrad");
-  int stencil=set.get_int("Stencil");
-  double step=set.get_double("Stepsize");
-  double fac=set.get_double("LineStepFac");
-  int cgreset=set.get_int("CGReset");
+  int maxiter=settings.get_int("MaxSteps");
+  std::string optmovie=settings.get_string("OptMovie");
+  std::string result=settings.get_string("Result");
+  bool numgrad=settings.get_bool("NumGrad");
+  int stencil=settings.get_int("Stencil");
+  double step=settings.get_double("Stepsize");
+  double fac=settings.get_double("LineStepFac");
+  int cgreset=settings.get_int("CGReset");
 
   // Interpret optimizer
   enum minimizer alg;
-  std::string method=set.get_string("Optimizer");
+  std::string method=settings.get_string("Optimizer");
   if(stricmp(method,"CGFR")==0)
     alg=gCGFR;
   else if(stricmp(method,"CGPR")==0)
@@ -456,7 +458,7 @@ int main_guarded(int argc, char **argv) {
 
   // Interpret optimizer
   enum convergence crit;
-  method=set.get_string("Criterion");
+  method=settings.get_string("Criterion");
   if(stricmp(method,"LOOSE")==0)
     crit=LOOSE;
   else if(stricmp(method,"NORMAL")==0)
@@ -471,7 +473,7 @@ int main_guarded(int argc, char **argv) {
   }
 
   // Redirect output?
-  std::string logfile=set.get_string("Logfile");
+  std::string logfile=settings.get_string("Logfile");
   if(stricmp(logfile,"stdout")!=0) {
     // Redirect stdout to file
     FILE *outstream=freopen(logfile.c_str(),"w",stdout);
@@ -486,8 +488,8 @@ int main_guarded(int argc, char **argv) {
   }
 
   // Read in atoms.
-  std::string atomfile=set.get_string("System");
-  const std::vector<atom_t> origgeom=load_xyz(atomfile,!set.get_bool("InputBohr"));
+  std::string atomfile=settings.get_string("System");
+  const std::vector<atom_t> origgeom=load_xyz(atomfile,!settings.get_bool("InputBohr"));
   std::vector<atom_t> atoms(origgeom);
 
   // Are any atoms fixed?
@@ -508,7 +510,7 @@ int main_guarded(int argc, char **argv) {
 
   // Read in basis set
   BasisSetLibrary baslib;
-  std::string basfile=set.get_string("Basis");
+  std::string basfile=settings.get_string("Basis");
   baslib.load_basis(basfile);
   printf("\n");
 
@@ -519,7 +521,6 @@ int main_guarded(int argc, char **argv) {
   opthelper_t pars;
   pars.atoms=atoms;
   pars.baslib=baslib;
-  pars.set=set;
   pars.dofidx=dofidx;
   pars.numgrad=numgrad;
   pars.npoints=stencil+1;
@@ -554,19 +555,20 @@ int main_guarded(int argc, char **argv) {
   double steplen=1e-2;
 
   // Save calculation to
-  pars.set.set_string("SaveChk",getchk(ncalc));
+  Settings settings0(settings);
 
   // Calculate energy at the starting point
+  settings.set_string("SaveChk",getchk(ncalc));
   calculate(x,pars,E,f,false);
   chkstore.push_back(ncalc);
   ncalc++;
   // Turn off verbose setting for any later calcs
-  pars.set.set_bool("Verbose",false);
+  settings.set_bool("Verbose",false);
   try {
     // Also, don't localize, since it would screw up the converged guess
-    pars.set.set_string("PZloc","false");
+    settings.set_string("PZloc","false");
     // And don't run stability analysis, since we are only doing small displacements
-    pars.set.set_int("PZstab",0);
+    settings.set_int("PZstab",0);
   } catch(std::runtime_error &) {
   }
 
@@ -584,9 +586,9 @@ int main_guarded(int argc, char **argv) {
     sdold=sd;
 
     // Load reference from earlier calculation
-    pars.set.set_string("LoadChk",getchk(iref));
+    settings.set_string("LoadChk",getchk(iref));
     // Save calculation to
-    pars.set.set_string("SaveChk",getchk(ncalc));
+    settings.set_string("SaveChk",getchk(ncalc));
 
     // Calculate energy and force at current position
     calculate(x,pars,E,f,true);
@@ -680,8 +682,8 @@ int main_guarded(int argc, char **argv) {
 
       double Et;
       arma::vec ft;
-      pars.set.set_string("LoadChk",getchk(iref));
-      pars.set.set_string("SaveChk",getchk(ncalc));
+      settings.set_string("LoadChk",getchk(iref));
+      settings.set_string("SaveChk",getchk(ncalc));
       calculate(x+p.s*sd,pars,Et,ft,false);
       iref=ncalc;
       chkstore.push_back(ncalc);
@@ -732,8 +734,8 @@ int main_guarded(int argc, char **argv) {
 
 	double Et;
 	arma::vec ft;
-	pars.set.set_string("LoadChk",getchk(steps[imin].icalc));
-	pars.set.set_string("SaveChk",getchk(ncalc));
+	settings.set_string("LoadChk",getchk(steps[imin].icalc));
+	settings.set_string("SaveChk",getchk(ncalc));
 	calculate(x+p.s*sd,pars,Et,ft,false);
 	chkstore.push_back(ncalc);
 	ncalc++;
@@ -803,8 +805,8 @@ int main_guarded(int argc, char **argv) {
 
 	  double Et;
 	  arma::vec ft;
-	  pars.set.set_string("LoadChk",getchk(iref));
-	  pars.set.set_string("SaveChk",getchk(ncalc));
+	  settings.set_string("LoadChk",getchk(iref));
+	  settings.set_string("SaveChk",getchk(ncalc));
 	  calculate(x+p.s*sd,pars,Et,ft,false);
 	  chkstore.push_back(ncalc);
 	  ncalc++;
@@ -841,7 +843,7 @@ int main_guarded(int argc, char **argv) {
     // Copy checkpoint file
     {
       std::ostringstream oss;
-      oss << "\\cp " << getchk(iref) << " " << set.get_string("SaveChk");
+      oss << "\\cp " << getchk(iref) << " " << settings.get_string("SaveChk");
       if(system(oss.str().c_str()))
 	throw std::runtime_error("Error copying checkpoint.\n");
     }
