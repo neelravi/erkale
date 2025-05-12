@@ -5,11 +5,11 @@ on: [push, pull_request]
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
 
     name: Ubuntu 20.04 Build and Test
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Resolve dependencies
         run: sudo apt-get install libarmadillo-dev cmake gfortran libgsl-dev libxc-dev libxc5 libint1 libint-dev libhdf5-serial-dev
